@@ -81,6 +81,20 @@ fn build_grpc(cc: &mut Build, library: &str) {
         if env::var("CARGO_CFG_TARGET_ENV").unwrap_or("".to_owned()) == "musl" {
             config.define("CMAKE_CXX_COMPILER", "g++");
         }
+        // We don't need to generate install targets.
+        config.define("gRPC_INSTALL", "false");
+        // We don't need to build csharp target.
+        config.define("gRPC_BUILD_CSHARP_EXT", "false");
+        // We don't need to build codegen target.
+        config.define("gRPC_BUILD_CODEGEN", "false");
+        if cfg!(feature = "openssl") {
+            config.define("gRPC_SSL_PROVIDER", "package");
+            config.define("EMBED_OPENSSL", "false");
+            // Problem is: Ubuntu Trusty shipped with openssl 1.0.1f. Which doesn't
+            // support alpn. And Google's gRPC checks for support of ALPN in plane
+            // old Makefile, but not in CMake.
+            config.cxxflag("-DTSI_OPENSSL_ALPN_SUPPORT=0");
+        }
         config.build_target(library).uses_cxx11().build()
     };
 
@@ -126,8 +140,13 @@ fn build_grpc(cc: &mut Build, library: &str) {
     println!("cargo:rustc-link-lib=static={}", library);
 
     if cfg!(feature = "secure") {
-        println!("cargo:rustc-link-lib=static=ssl");
-        println!("cargo:rustc-link-lib=static=crypto");
+        if cfg!(feature = "openssl") {
+            println!("cargo:rustc-link-lib=ssl");
+            println!("cargo:rustc-link-lib=crypto");
+        } else {
+            println!("cargo:rustc-link-lib=static=ssl");
+            println!("cargo:rustc-link-lib=static=crypto");
+        }
     }
 
     cc.include("grpc/include");
